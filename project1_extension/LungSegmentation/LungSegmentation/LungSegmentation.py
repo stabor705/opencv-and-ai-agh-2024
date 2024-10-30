@@ -369,6 +369,7 @@ class LungSegmentationLogic(ScriptedLoadableModuleLogic):
         slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
             labelMapVolumeNode, segmentationNode
         )
+        segmentationNode.SetName(inputVolume.GetName() + "_segmentation")
 
         slicer.mrmlScene.RemoveNode(labelMapVolumeNode)
 
