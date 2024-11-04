@@ -27,7 +27,15 @@ from scipy.spatial import ConvexHull
 from scipy.ndimage import binary_fill_holes
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
+try:
+    from surface_distance.metrics import compute_dice_coefficient
+except ImportError:
+    # Install surface-distance package by running:
+    os.system("git clone https://github.com/deepmind/surface-distance.git")
+    slicer.util.pip_install("surface-distance")
+    from surface_distance.metrics import compute_dice_coefficient
 
+    
 import vtkSegmentationCore
 
 import pandas as pd
@@ -35,6 +43,8 @@ import pandas as pd
 #
 # LungSegmentation
 #
+
+
 
 
 class LungSegmentation(ScriptedLoadableModule):
@@ -126,14 +136,15 @@ class LungSegmentationParameterNode:
     The parameters needed by module.
 
     inputVolume - The volume to threshold.
-    imageThreshold - The value at which to threshold the input volume.
-    invertThreshold - If true, will invert the threshold.
-    thresholdedVolume - The output volume that will contain the thresholded volume.
-    invertedVolume - The output volume that will contain the inverted thresholded volume.
+    outputVolume - The thresholding result.
+    referenceVolume - The reference volume for thresholding.
+    totalSegVolume - The total segmentation volume.
     """
 
     inputVolume: vtkMRMLScalarVolumeNode
     outputVolume: vtkMRMLScalarVolumeNode
+    referenceVolume: vtkMRMLScalarVolumeNode
+    totalSegVolume: vtkMRMLScalarVolumeNode
 
 
 #
@@ -255,7 +266,7 @@ class LungSegmentationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Run processing when user clicks "Apply" button."""
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
             # Compute output
-            self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode())
+            self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(), self.ui.referenceSelector.currentNode(), self.ui.totalSegSelector.currentNode())
 
 
 #
@@ -279,6 +290,11 @@ class LungSegmentationLogic(ScriptedLoadableModuleLogic):
 
     def getParameterNode(self):
         return LungSegmentationParameterNode(super().getParameterNode())
+
+    def dice_coeff(lung, lung_ref):
+        # calculate the dice coefficient
+        dice = compute_dice_coefficient(np.array(lung).astype(np.bool_), np.array(lung_ref).astype(np.bool_))
+        return dice
 
     def thorax_mask(ct: np.array):
         nib_img = cv2.medianBlur(ct.astype(np.float32), 3)
@@ -335,12 +351,16 @@ class LungSegmentationLogic(ScriptedLoadableModuleLogic):
     def process(self,
                 inputVolume: vtkMRMLScalarVolumeNode,
                 outputVolume: vtkMRMLScalarVolumeNode,
+                referenceVolume: vtkMRMLScalarVolumeNode,
+                totalSegVolume: vtkMRMLScalarVolumeNode,
                 showResult: bool = True) -> None:
         """
         Run the processing algorithm.
         Can be used without GUI widget.
         :param inputVolume: volume to be thresholded
         :param outputVolume: thresholding result
+        :param referenceVolume: reference volume for thresholding
+        :param totalSegVolume: total segmentation volume
         :param showResult: show output volume in slice viewers
         """
 
@@ -376,9 +396,44 @@ class LungSegmentationLogic(ScriptedLoadableModuleLogic):
         stopTime = time.time()
         logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
 
-        # save split lings to output volume
+        # save split lungs to output volume
         slicer.util.updateVolumeFromArray(outputVolume, splitLungs)
         outputVolume.SetName(inputVolume.GetName() + "_lungs_split")
+
+        # Dice calculation
+        if not referenceVolume or not totalSegVolume:
+            raise ValueError("Input or output volume is invalid")
+        diceStartTIme = time.time()
+        referenceArray = slicer.util.arrayFromVolume(referenceVolume)
+        totalSegArray = slicer.util.arrayFromVolume(totalSegVolume)
+        segmentedLungsArray = splitLungs
+
+        leftLungReference = referenceArray == 2
+        rightLungReference = referenceArray == 3
+        leftLungTotalSeg = totalSegArray == 1
+        rightLungTotalSeg = totalSegArray == 2
+        leftLungSegmented = splitLungs == 1
+        rightLungSegmented = splitLungs == 2
+
+        leftLungDice = LungSegmentationLogic.dice_coeff(leftLungSegmented, leftLungReference)
+        rightLungDice = LungSegmentationLogic.dice_coeff(rightLungSegmented, rightLungReference)
+        totalLungDice = LungSegmentationLogic.dice_coeff(segmentedLungsArray, referenceArray)
+
+        logging.info(f"Left lung dice: {leftLungDice}")
+        logging.info(f"Right lung dice: {rightLungDice}")
+        logging.info(f"Total lung dice: {totalLungDice}")
+
+        leftLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(leftLungSegmented, leftLungTotalSeg)
+        rightLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(rightLungSegmented, rightLungTotalSeg)
+        totalLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(segmentedLungsArray, totalSegArray)
+
+        logging.info(f"Left lung dice with total segmentation: {leftLungDiceTotalSeg}")
+        logging.info(f"Right lung dice with total segmentation: {rightLungDiceTotalSeg}")
+        logging.info(f"Total lung dice with total segmentation: {totalLungDiceTotalSeg}")
+
+        diceStopTime = time.time()
+
+        logging.info(f"Dice calculation completed in {diceStopTime-diceStartTIme:.2f} seconds")
 
 
 
