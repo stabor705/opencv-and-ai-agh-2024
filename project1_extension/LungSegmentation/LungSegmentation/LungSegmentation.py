@@ -17,11 +17,23 @@ from slicer.parameterNodeWrapper import (
 
 from slicer import vtkMRMLScalarVolumeNode
 import numpy as np
-import cv2
+try :
+    import cv2
+except ImportError:
+    os.system("pip install opencv-python")
+    import cv2
 
-
+try :
+    import skimage
+except ImportError:
+    os.system("pip install scikit-image")
 from skimage import measure
 from skimage import morphology
+try :
+    import scipy
+except ImportError:
+    os.system("pip install scipy")
+    
 from scipy import ndimage as ndi
 from scipy.spatial import ConvexHull
 from scipy.ndimage import binary_fill_holes
@@ -410,8 +422,13 @@ class LungSegmentationLogic(ScriptedLoadableModuleLogic):
 
         leftLungReference = referenceArray == 2
         rightLungReference = referenceArray == 3
-        leftLungTotalSeg = totalSegArray == 1
-        rightLungTotalSeg = totalSegArray == 2
+
+        splitTotalLungs = LungSegmentationLogic.performWatershed(totalSegArray) # making sure that the total segmentation is split into left and right lungs as well
+        # because TotalSegmenter splits lungs into 5 segments
+        leftLungTotalSeg = splitTotalLungs == 1
+        rightLungTotalSeg = splitTotalLungs == 2
+
+
         leftLungSegmented = splitLungs == 1
         rightLungSegmented = splitLungs == 2
 
