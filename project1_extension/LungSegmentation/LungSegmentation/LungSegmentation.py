@@ -440,9 +440,9 @@ class LungSegmentationLogic(ScriptedLoadableModuleLogic):
         logging.info(f"Right lung dice: {rightLungDice}")
         logging.info(f"Total lung dice: {totalLungDice}")
 
-        leftLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(leftLungSegmented, leftLungTotalSeg)
-        rightLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(rightLungSegmented, rightLungTotalSeg)
-        totalLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(segmentedLungsArray, totalSegArray)
+        leftLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(leftLungReference, leftLungTotalSeg)
+        rightLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(rightLungReference, rightLungTotalSeg)
+        totalLungDiceTotalSeg = LungSegmentationLogic.dice_coeff(referenceArray, totalSegArray)
 
         logging.info(f"Left lung dice with total segmentation: {leftLungDiceTotalSeg}")
         logging.info(f"Right lung dice with total segmentation: {rightLungDiceTotalSeg}")
